@@ -31,9 +31,40 @@ class Bullet(pg.sprite.Sprite):
         self.rect.center = self.pos
 
     def draw(self, surf: pg.Surface):
-        # Draw the bullet on the target surface.
         draw_circle(surf, self.pos, self.r)
 
+class PowerUp(pg.sprite.Sprite):
+    def __init__(self, pos: Vec, p_type: str = "shield"):
+        super().__init__()
+        self.pos = Vec(pos)
+        self.p_type = p_type
+        self.ttl = C.POWERUP_TTL
+        self.r = C.POWERUP_RADIUS
+        self.rect = pg.Rect(0, 0, self.r * 2, self.r * 2)
+
+    def update(self, dt: float):
+        self.ttl -= dt
+        if self.ttl <= 0:
+            self.kill()
+        self.rect.center = self.pos
+
+    def draw(self, surf: pg.Surface):
+        if self.p_type == "shield":
+            # Desenha o power-up de escudo (losango)
+            p1 = self.pos + Vec(0, -self.r)
+            p2 = self.pos + Vec(self.r, 0)
+            p3 = self.pos + Vec(0, self.r)
+            p4 = self.pos + Vec(-self.r, 0)
+            draw_poly(surf, [p1, p2, p3, p4])
+        elif self.p_type == "life":
+            # Desenha o power-up de vida extra (Círculo com um '+')
+            draw_circle(surf, self.pos, self.r)
+            p_top = self.pos + Vec(0, -self.r + 2)
+            p_bot = self.pos + Vec(0, self.r - 2)
+            p_left = self.pos + Vec(-self.r + 2, 0)
+            p_right = self.pos + Vec(self.r - 2, 0)
+            pg.draw.line(surf, C.WHITE, p_top, p_bot, width=2)
+            pg.draw.line(surf, C.WHITE, p_left, p_right, width=2)
 
 class UfoBullet(pg.sprite.Sprite):
     # Initialize a UFO bullet with position, velocity, and lifetime.
@@ -99,6 +130,9 @@ class Ship(pg.sprite.Sprite):
     # Initialize the player ship and its gameplay state.
     def __init__(self, pos: Vec):
         super().__init__()
+        self.invuln = 0.0
+        self.shield_time = 0.0  # Tempo restante do escudo
+        self.alive = True
         self.pos = Vec(pos)
         self.vel = Vec(0, 0)
         self.angle = -90.0
@@ -140,6 +174,8 @@ class Ship(pg.sprite.Sprite):
             self.cool -= dt
         if self.invuln > 0:
             self.invuln -= dt
+        if self.shield_time > 0:
+            self.shield_time -= dt
         self.pos += self.vel * dt
         self.pos = wrap_pos(self.pos)
         self.rect.center = self.pos
@@ -155,6 +191,8 @@ class Ship(pg.sprite.Sprite):
         draw_poly(surf, [p1, p2, p3])
         if self.invuln > 0 and int(self.invuln * 10) % 2 == 0:
             draw_circle(surf, self.pos, self.r + 6)
+        if self.shield_time > 0:
+            draw_circle(surf, self.pos, self.r + 12)
 
 
 class UFO(pg.sprite.Sprite):
