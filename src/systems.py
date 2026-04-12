@@ -8,7 +8,7 @@ from random import uniform
 import pygame as pg
 
 import config as C
-from sprites import Asteroid, Ship, UFO
+from sprites import Asteroid, PowerUp, Ship, UFO
 from utils import Vec, rand_edge_pos, rand_unit_vec
 
 
@@ -18,6 +18,7 @@ class World:
         self.ship = Ship(Vec(C.WIDTH / 2, C.HEIGHT / 2))
         self.bullets = pg.sprite.Group()
         self.ufo_bullets = pg.sprite.Group()
+        self.powerups = pg.sprite.Group()
         self.asteroids = pg.sprite.Group()
         self.ufos = pg.sprite.Group()
         self.all_sprites = pg.sprite.Group(self.ship)
@@ -106,7 +107,20 @@ class World:
             self.wave_cool -= dt
 
     def handle_collisions(self):
-        # Resolve collisions between bullets, asteroids, UFOs, and the ship.
+        # 1. Nave coleta power-ups (Escudo ou Vida)
+        power_hits = pg.sprite.spritecollide(
+            self.ship, self.powerups, True,
+            collided=lambda a, b: (a.pos - b.pos).length() < (a.r + b.r)
+        )
+        for p in power_hits:
+            if p.p_type == "shield":
+                self.ship.shield_time = C.SHIELD_DURATION
+                self.score += 50
+            elif p.p_type == "life":
+                self.lives += 1
+                self.score += 100
+
+        # 2. Tiros da nave acertam asteroides
         hits = pg.sprite.groupcollide(
             self.asteroids,
             self.bullets,
@@ -117,6 +131,7 @@ class World:
         for ast, _ in hits.items():
             self.split_asteroid(ast)
 
+        # 3. Tiros dos UFOs acertam asteroides
         ufo_hits = pg.sprite.groupcollide(
             self.asteroids,
             self.ufo_bullets,
@@ -127,21 +142,23 @@ class World:
         for ast, _ in ufo_hits.items():
             self.split_asteroid(ast)
 
+        # 4. Colisões letais com a nave (verificando o escudo)
         if self.ship.invuln <= 0 and self.safe <= 0:
             for ast in self.asteroids:
                 if (ast.pos - self.ship.pos).length() < (ast.r + self.ship.r):
-                    self.ship_die()
+                    self.take_damage()
                     break
             for ufo in self.ufos:
                 if (ufo.pos - self.ship.pos).length() < (ufo.r + self.ship.r):
-                    self.ship_die()
+                    self.take_damage()
                     break
             for bullet in self.ufo_bullets:
                 if (bullet.pos - self.ship.pos).length() < (bullet.r + self.ship.r):
                     bullet.kill()
-                    self.ship_die()
+                    self.take_damage()
                     break
 
+        # 5. Tiros da nave acertam UFOs
         for ufo in list(self.ufos):
             for b in list(self.bullets):
                 if (ufo.pos - b.pos).length() < (ufo.r + b.r):
@@ -161,6 +178,27 @@ class World:
             dirv = rand_unit_vec()
             speed = uniform(C.AST_VEL_MIN, C.AST_VEL_MAX) * 1.2
             self.spawn_asteroid(pos, dirv * speed, s)
+            
+        # Chance de dropar um power-up
+        if uniform(0, 1) < C.POWERUP_DROP_CHANCE:
+            # 70% de chance de ser escudo, 30% de chance de ser vida extra
+            if uniform(0, 1) < 0.7:
+                ptype = "shield"
+            else:
+                ptype = "life"
+                
+            p = PowerUp(pos, ptype)
+            self.powerups.add(p)
+            self.all_sprites.add(p)
+
+    def take_damage(self):
+            # Se a nave tem escudo ativo, ela perde o escudo e ganha 1 seg de invulnerabilidade
+            if self.ship.shield_time > 0:
+                self.ship.shield_time = 0
+                self.ship.invuln = 1.0
+            # Se não tem escudo, morre normalmente
+            else:
+                self.ship_die()
 
     def ship_die(self):
         # Remove uma vida; sinaliza game over ou reposiciona a nave.

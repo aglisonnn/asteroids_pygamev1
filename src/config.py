@@ -45,3 +45,9 @@ RANDOM_SEED = None
 
 # Duração do fade-in da tela de game over (segundos)
 GAME_OVER_FADE_DURATION = 1.5
+
+# POWER-UPS E ESCUDOS
+POWERUP_RADIUS = 12
+POWERUP_TTL = 10.0           # Tempo que o power-up fica na tela antes de sumir
+SHIELD_DURATION = 8.0        # Tempo de duração do escudo na nave
+POWERUP_DROP_CHANCE = 0.15   # 15% de chance de dropar ao destruir um asteroide
