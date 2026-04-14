@@ -183,56 +183,6 @@ class World:
             self.ship,
             self.powerups,
             True,
-            collided=lambda a, b: (a.pos - b.pos).length() < (a.r + b.r)
-        )
-        for p in power_hits:
-            if p.p_type == "shield":
-                self.ship.shield_time = C.SHIELD_DURATION
-                self.score += 50
-            elif p.p_type == "life":
-                self.lives += 1
-                self.score += 100
-            elif p.p_type == "double_shot":
-                self.ship.double_shot_time = C.DOUBLE_SHOT_DURATION
-            elif p.p_type == "laser":
-                self.ship.laser_charges += C.LASER_CHARGE_MAX
-
-        hits = pg.sprite.groupcollide(
-            self.asteroids,
-            self.bullets,
-            False,
-            True,
-            collided=lambda a, b: (a.pos - b.pos).length() < a.r,
-        )
-        for ast, _ in hits.items():
-            self.split_asteroid(ast)
-
-        # 3. Raio laser acerta asteroides (colisão geométrica ponto-linha)
-        for laser in list(self.lasers):
-            for ast in list(self.asteroids):
-                if laser.hits(ast):
-                    self.split_asteroid(ast)
-
-        # 4. Raio laser acerta UFOs
-        for laser in list(self.lasers):
-            for ufo in list(self.ufos):
-                if laser.hits(ufo):
-                    score = (C.UFO_SMALL["score"] if ufo.small
-                             else C.UFO_BIG["score"])
-                    self.register_kill(score * C.LASER_SCORE_MULT)
-                    ufo.kill()
-
-            True,
-            collided=lambda a, b: (a.pos - b.pos).length() < a.r,
-        )
-        for ast, _ in ufo_hits.items():
-            self.split_asteroid(ast)
-
-    def handle_collisions(self):
-        power_hits = pg.sprite.spritecollide(
-            self.ship,
-            self.powerups,
-            True,
             collided=lambda a, b: (a.pos - b.pos).length() < (a.r + b.r),
         )
         for p in power_hits:
