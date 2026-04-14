@@ -51,3 +51,24 @@ POWERUP_RADIUS = 12
 POWERUP_TTL = 10.0           # Tempo que o power-up fica na tela antes de sumir
 SHIELD_DURATION = 8.0        # Tempo de duração do escudo na nave
 POWERUP_DROP_CHANCE = 0.15   # 15% de chance de dropar ao destruir um asteroide
+
+# TIRO DUPLO
+DOUBLE_SHOT_DURATION = 10.0  # Duração do tiro duplo em segundos
+DOUBLE_SHOT_SPREAD = 10.0    # Ângulo de abertura entre os dois tiros (graus)
+
+# LASER
+LASER_DURATION = 8.0         # Duração do power-up de laser (segundos de uso)
+LASER_CHARGE_MAX = 3         # Número de disparos de laser por power-up
+LASER_WIDTH = 3              # Largura visual do feixe de laser
+LASER_TTL = 0.12             # Duração do raio laser na tela (segundos)
+LASER_COLOR = (80, 220, 255) # Cor do laser (azul-ciano)
+LASER_SCORE_MULT = 1         # Multiplicador de score ao destruir com laser
+
+# Probabilidade de drop de cada tipo de power-up (somam 1.0)
+# shield=0.40, life=0.20, double_shot=0.25, laser=0.15
+POWERUP_WEIGHTS = {
+    "shield": 0.40,
+    "life": 0.20,
+    "double_shot": 0.25,
+    "laser": 0.15,
+}

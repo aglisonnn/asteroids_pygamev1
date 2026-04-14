@@ -8,7 +8,7 @@ from random import uniform
 import pygame as pg
 
 import config as C
-from sprites import Asteroid, PowerUp, Ship, UFO
+from sprites import Asteroid, Laser, PowerUp, Ship, UFO
 from utils import Vec, rand_edge_pos, rand_unit_vec
 
 
@@ -21,6 +21,7 @@ class World:
         self.powerups = pg.sprite.Group()
         self.asteroids = pg.sprite.Group()
         self.ufos = pg.sprite.Group()
+        self.lasers = pg.sprite.Group()  # Raios laser do jogador
         self.all_sprites = pg.sprite.Group(self.ship)
         self.score = 0
         self.lives = C.START_LIVES
@@ -70,13 +71,25 @@ class World:
                 self.all_sprites.add(bullet)
 
     def try_fire(self):
-        # Fire a player bullet when the bullet cap allows it.
+        """Dispara projéteis do jogador respeitando o limite MAX_BULLETS.
+
+        Com tiro duplo ativo, tenta adicionar dois projéteis; com tiro
+        simples, apenas um.  O limite é verificado antes de qualquer
+        disparo para manter a contagem consistente.
+        """
         if len(self.bullets) >= C.MAX_BULLETS:
             return
-        b = self.ship.fire()
-        if b:
+        new_bullets = self.ship.fire()
+        for b in new_bullets:
             self.bullets.add(b)
             self.all_sprites.add(b)
+
+    def try_fire_laser(self):
+        """Dispara um raio laser caso a nave tenha cargas disponíveis."""
+        laser = self.ship.fire_laser()
+        if laser:
+            self.lasers.add(laser)
+            self.all_sprites.add(laser)
 
     def hyperspace(self):
         # Trigger the ship hyperspace action and apply its score penalty.
@@ -107,7 +120,7 @@ class World:
             self.wave_cool -= dt
 
     def handle_collisions(self):
-        # 1. Nave coleta power-ups (Escudo ou Vida)
+        # 1. Nave coleta power-ups (Escudo, Vida, Tiro Duplo ou Laser)
         power_hits = pg.sprite.spritecollide(
             self.ship, self.powerups, True,
             collided=lambda a, b: (a.pos - b.pos).length() < (a.r + b.r)
@@ -119,6 +132,10 @@ class World:
             elif p.p_type == "life":
                 self.lives += 1
                 self.score += 100
+            elif p.p_type == "double_shot":
+                self.ship.double_shot_time = C.DOUBLE_SHOT_DURATION
+            elif p.p_type == "laser":
+                self.ship.laser_charges += C.LASER_CHARGE_MAX
 
         # 2. Tiros da nave acertam asteroides
         hits = pg.sprite.groupcollide(
@@ -131,7 +148,22 @@ class World:
         for ast, _ in hits.items():
             self.split_asteroid(ast)
 
-        # 3. Tiros dos UFOs acertam asteroides
+        # 3. Raio laser acerta asteroides (colisão geométrica ponto-linha)
+        for laser in list(self.lasers):
+            for ast in list(self.asteroids):
+                if laser.hits(ast):
+                    self.split_asteroid(ast)
+
+        # 4. Raio laser acerta UFOs
+        for laser in list(self.lasers):
+            for ufo in list(self.ufos):
+                if laser.hits(ufo):
+                    score = (C.UFO_SMALL["score"] if ufo.small
+                             else C.UFO_BIG["score"])
+                    self.score += score
+                    ufo.kill()
+
+        # 5. Tiros dos UFOs acertam asteroides
         ufo_hits = pg.sprite.groupcollide(
             self.asteroids,
             self.ufo_bullets,
@@ -142,7 +174,7 @@ class World:
         for ast, _ in ufo_hits.items():
             self.split_asteroid(ast)
 
-        # 4. Colisões letais com a nave (verificando o escudo)
+        # 6. Colisões letais com a nave (verificando o escudo)
         if self.ship.invuln <= 0 and self.safe <= 0:
             for ast in self.asteroids:
                 if (ast.pos - self.ship.pos).length() < (ast.r + self.ship.r):
@@ -153,12 +185,13 @@ class World:
                     self.take_damage()
                     break
             for bullet in self.ufo_bullets:
-                if (bullet.pos - self.ship.pos).length() < (bullet.r + self.ship.r):
+                if (bullet.pos - self.ship.pos).length() < (bullet.r
+                                                             + self.ship.r):
                     bullet.kill()
                     self.take_damage()
                     break
 
-        # 5. Tiros da nave acertam UFOs
+        # 7. Tiros da nave acertam UFOs
         for ufo in list(self.ufos):
             for b in list(self.bullets):
                 if (ufo.pos - b.pos).length() < (ufo.r + b.r):
@@ -178,27 +211,34 @@ class World:
             dirv = rand_unit_vec()
             speed = uniform(C.AST_VEL_MIN, C.AST_VEL_MAX) * 1.2
             self.spawn_asteroid(pos, dirv * speed, s)
-            
-        # Chance de dropar um power-up
+
+        # Chance de dropar um power-up com pesos configuráveis
         if uniform(0, 1) < C.POWERUP_DROP_CHANCE:
-            # 70% de chance de ser escudo, 30% de chance de ser vida extra
-            if uniform(0, 1) < 0.7:
-                ptype = "shield"
-            else:
-                ptype = "life"
-                
+            ptype = self._roll_powerup_type()
             p = PowerUp(pos, ptype)
             self.powerups.add(p)
             self.all_sprites.add(p)
 
+    @staticmethod
+    def _roll_powerup_type() -> str:
+        """Sorteia um tipo de power-up baseado nos pesos de POWERUP_WEIGHTS."""
+        roll = uniform(0, 1)
+        cumulative = 0.0
+        for ptype, weight in C.POWERUP_WEIGHTS.items():
+            cumulative += weight
+            if roll < cumulative:
+                return ptype
+        # Fallback para o último tipo caso haja erro de arredondamento
+        return list(C.POWERUP_WEIGHTS.keys())[-1]
+
     def take_damage(self):
-            # Se a nave tem escudo ativo, ela perde o escudo e ganha 1 seg de invulnerabilidade
-            if self.ship.shield_time > 0:
-                self.ship.shield_time = 0
-                self.ship.invuln = 1.0
-            # Se não tem escudo, morre normalmente
-            else:
-                self.ship_die()
+        # Se a nave tem escudo ativo, ela perde o escudo e ganha invulnerabilidade
+        if self.ship.shield_time > 0:
+            self.ship.shield_time = 0
+            self.ship.invuln = 1.0
+        # Se não tem escudo, morre normalmente
+        else:
+            self.ship_die()
 
     def ship_die(self):
         # Remove uma vida; sinaliza game over ou reposiciona a nave.
@@ -210,6 +250,8 @@ class World:
         self.ship.vel.xy = (0, 0)
         self.ship.angle = -90
         self.ship.invuln = C.SAFE_SPAWN_TIME
+        self.ship.double_shot_time = 0.0  # Perde tiro duplo ao morrer
+        self.ship.laser_charges = 0       # Perde cargas de laser ao morrer
         self.safe = C.SAFE_SPAWN_TIME
 
     def draw(self, surf: pg.Surface, font: pg.font.Font):
@@ -218,6 +260,27 @@ class World:
             spr.draw(surf)
 
         pg.draw.line(surf, (60, 60, 60), (0, 50), (C.WIDTH, 50), width=1)
+
+        # Linha principal: score, vidas, wave
         txt = f"SCORE {self.score:06d}   LIVES {self.lives}   WAVE {self.wave}"
         label = font.render(txt, True, C.WHITE)
         surf.blit(label, (10, 10))
+
+        # Indicadores de power-ups activos (canto superior direito)
+        hud_x = C.WIDTH - 10
+        hud_y = 10
+
+        if self.ship.double_shot_time > 0:
+            ds_label = font.render(
+                f"2x {self.ship.double_shot_time:.1f}s", True, (255, 220, 80)
+            )
+            hud_x -= ds_label.get_width()
+            surf.blit(ds_label, (hud_x, hud_y))
+            hud_x -= 14
+
+        if self.ship.laser_charges > 0:
+            laser_label = font.render(
+                f"LASER x{self.ship.laser_charges}", True, C.LASER_COLOR
+            )
+            hud_x -= laser_label.get_width()
+            surf.blit(laser_label, (hud_x, hud_y))
