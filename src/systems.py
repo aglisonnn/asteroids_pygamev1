@@ -1,4 +1,3 @@
-
 # ASTEROIDE SINGLEPLAYER v1.0
 # This file coordinates world state, spawning, collisions, scoring, and progression.
 
@@ -22,9 +21,15 @@ class World:
         self.asteroids = pg.sprite.Group()
         self.ufos = pg.sprite.Group()
         self.all_sprites = pg.sprite.Group(self.ship)
+
         self.score = 0
         self.lives = C.START_LIVES
         self.wave = 0
+
+        # COMBO
+        self.combo_timer = 0.0
+        self.combo_mult = 1
+
         self.wave_cool = C.WAVE_DELAY
         self.safe = C.SAFE_SPAWN_TIME
         self.ufo_timer = C.UFO_SPAWN_EVERY
@@ -83,17 +88,37 @@ class World:
         self.ship.hyperspace()
         self.score = max(0, self.score - C.HYPERSPACE_COST)
 
+    def register_kill(self, base_score: int):
+        # Atualiza o combo e aplica a pontuação multiplicada.
+        if self.combo_timer > 0:
+            self.combo_mult = min(self.combo_mult + 1, C.COMBO_MAX)
+        else:
+            self.combo_mult = 1
+
+        self.combo_timer = C.COMBO_WINDOW
+        self.score += base_score * self.combo_mult
+
     def update(self, dt: float, keys):
         # Update the world simulation, timers, enemy behavior, and progression.
         self.ship.control(keys, dt)
         self.all_sprites.update(dt)
+
+        # Atualiza combo
+        if self.combo_timer > 0:
+            self.combo_timer -= dt
+            if self.combo_timer <= 0:
+                self.combo_timer = 0
+                self.combo_mult = 1
+
         if self.safe > 0:
             self.safe -= dt
             self.ship.invuln = 0.5
+
         if self.ufos:
             self.ufo_try_fire()
         else:
             self.ufo_timer -= dt
+
         if not self.ufos and self.ufo_timer <= 0:
             self.spawn_ufo()
             self.ufo_timer = C.UFO_SPAWN_EVERY
@@ -109,7 +134,9 @@ class World:
     def handle_collisions(self):
         # 1. Nave coleta power-ups (Escudo ou Vida)
         power_hits = pg.sprite.spritecollide(
-            self.ship, self.powerups, True,
+            self.ship,
+            self.powerups,
+            True,
             collided=lambda a, b: (a.pos - b.pos).length() < (a.r + b.r)
         )
         for p in power_hits:
@@ -148,10 +175,12 @@ class World:
                 if (ast.pos - self.ship.pos).length() < (ast.r + self.ship.r):
                     self.take_damage()
                     break
+
             for ufo in self.ufos:
                 if (ufo.pos - self.ship.pos).length() < (ufo.r + self.ship.r):
                     self.take_damage()
                     break
+
             for bullet in self.ufo_bullets:
                 if (bullet.pos - self.ship.pos).length() < (bullet.r + self.ship.r):
                     bullet.kill()
@@ -162,23 +191,23 @@ class World:
         for ufo in list(self.ufos):
             for b in list(self.bullets):
                 if (ufo.pos - b.pos).length() < (ufo.r + b.r):
-                    score = (C.UFO_SMALL["score"] if ufo.small
-                             else C.UFO_BIG["score"])
-                    self.score += score
+                    score = C.UFO_SMALL["score"] if ufo.small else C.UFO_BIG["score"]
+                    self.register_kill(score)
                     ufo.kill()
                     b.kill()
 
     def split_asteroid(self, ast: Asteroid):
         # Destroy an asteroid, award score, and spawn its smaller fragments.
-        self.score += C.AST_SIZES[ast.size]["score"]
+        self.register_kill(C.AST_SIZES[ast.size]["score"])
         split = C.AST_SIZES[ast.size]["split"]
         pos = Vec(ast.pos)
         ast.kill()
+
         for s in split:
             dirv = rand_unit_vec()
             speed = uniform(C.AST_VEL_MIN, C.AST_VEL_MAX) * 1.2
             self.spawn_asteroid(pos, dirv * speed, s)
-            
+
         # Chance de dropar um power-up
         if uniform(0, 1) < C.POWERUP_DROP_CHANCE:
             # 70% de chance de ser escudo, 30% de chance de ser vida extra
@@ -186,19 +215,19 @@ class World:
                 ptype = "shield"
             else:
                 ptype = "life"
-                
+
             p = PowerUp(pos, ptype)
             self.powerups.add(p)
             self.all_sprites.add(p)
 
     def take_damage(self):
-            # Se a nave tem escudo ativo, ela perde o escudo e ganha 1 seg de invulnerabilidade
-            if self.ship.shield_time > 0:
-                self.ship.shield_time = 0
-                self.ship.invuln = 1.0
-            # Se não tem escudo, morre normalmente
-            else:
-                self.ship_die()
+        # Se a nave tem escudo ativo, ela perde o escudo e ganha 1 seg de invulnerabilidade
+        if self.ship.shield_time > 0:
+            self.ship.shield_time = 0
+            self.ship.invuln = 1.0
+        # Se não tem escudo, morre normalmente
+        else:
+            self.ship_die()
 
     def ship_die(self):
         # Remove uma vida; sinaliza game over ou reposiciona a nave.
@@ -206,6 +235,7 @@ class World:
         if self.lives <= 0:
             self.game_over = True  # Game.run() detecta e muda de cena
             return
+
         self.ship.pos.xy = (C.WIDTH / 2, C.HEIGHT / 2)
         self.ship.vel.xy = (0, 0)
         self.ship.angle = -90
@@ -218,6 +248,12 @@ class World:
             spr.draw(surf)
 
         pg.draw.line(surf, (60, 60, 60), (0, 50), (C.WIDTH, 50), width=1)
+
         txt = f"SCORE {self.score:06d}   LIVES {self.lives}   WAVE {self.wave}"
         label = font.render(txt, True, C.WHITE)
         surf.blit(label, (10, 10))
+
+        combo_txt = f"COMBO x{self.combo_mult}"
+        combo_label = font.render(combo_txt, True, C.WHITE)
+        surf.blit(combo_label, (10, 30))
+        
