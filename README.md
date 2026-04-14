@@ -145,7 +145,7 @@ pip freeze > requirements.txt
 
 ### Nível 3
 
-<img width="8192" height="5911" alt="Asteroids Game Loop-2026-04-14-215400" src="https://github.com/user-attachments/assets/761ca709-9860-4e4b-a6d2-ef6045b4d4ce" />
+<img width="5760" height="8192" alt="Asteroids Game Loop-2026-04-14-233351" src="https://github.com/user-attachments/assets/54d9142e-f1ed-4b1f-bbce-556f8e9f5696" />
 
 ### Nível 1
 
