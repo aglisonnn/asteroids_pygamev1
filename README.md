@@ -90,6 +90,21 @@ Sem ativar ambiente (Windows):
   - `shield`: ativa escudo temporario na nave
   - `life`: concede vida extra
 
+## Combo
+- Destruir inimigos em sequencia rapida ativa um multiplicador de pontuacao
+- Cada eliminacao dentro da janela de combo aumenta o multiplicador
+- O combo possui limite maximo configuravel
+- Se o tempo expirar sem novas eliminacoes, o multiplicador volta ao valor inicial
+
+## Boss
+- Aparece em waves configuradas no arquivo de constantes
+- Possui barra de HP exibida no topo da tela
+- Recebe dano pelos tiros da nave
+- Possui 3 fases baseadas na porcentagem de HP restante:
+- Fase 1: movimento mais lento, nucleo branco e disparo circular
+- Fase 2: aumento de velocidade, nucleo amarelo, disparo em espiral e invocacao de asteroides pequenos
+- Fase 3: modo agressivo, nucleo vermelho e disparos em multiplas direcoes
+
 ## Estrutura do projeto
 
 ```text
