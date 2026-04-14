@@ -7,7 +7,7 @@ from random import uniform
 import pygame as pg
 
 import config as C
-from sprites import Asteroid, Boss, PowerUp, Ship, UFO
+from sprites import Asteroid, Boss, Laser, PowerUp, Ship, UFO
 from utils import Vec, rand_edge_pos, rand_unit_vec
 
 
@@ -19,6 +19,7 @@ class World:
         self.powerups = pg.sprite.Group()
         self.asteroids = pg.sprite.Group()
         self.ufos = pg.sprite.Group()
+        self.lasers = pg.sprite.Group()  # Raios laser do jogador
         self.all_sprites = pg.sprite.Group(self.ship)
 
         self.boss = None
@@ -104,12 +105,25 @@ class World:
                 self.all_sprites.add(bullet)
 
     def try_fire(self):
+        """Dispara projéteis do jogador respeitando o limite MAX_BULLETS.
+
+        Com tiro duplo ativo, tenta adicionar dois projéteis; com tiro
+        simples, apenas um.  O limite é verificado antes de qualquer
+        disparo para manter a contagem consistente.
+        """
         if len(self.bullets) >= C.MAX_BULLETS:
             return
-        b = self.ship.fire()
-        if b:
+        new_bullets = self.ship.fire()
+        for b in new_bullets:
             self.bullets.add(b)
             self.all_sprites.add(b)
+
+    def try_fire_laser(self):
+        """Dispara um raio laser caso a nave tenha cargas disponíveis."""
+        laser = self.ship.fire_laser()
+        if laser:
+            self.lasers.add(laser)
+            self.all_sprites.add(laser)
 
     def hyperspace(self):
         self.ship.hyperspace()
@@ -169,7 +183,7 @@ class World:
             self.ship,
             self.powerups,
             True,
-            collided=lambda a, b: (a.pos - b.pos).length() < (a.r + b.r)
+            collided=lambda a, b: (a.pos - b.pos).length() < (a.r + b.r),
         )
         for p in power_hits:
             if p.p_type == "shield":
@@ -178,6 +192,10 @@ class World:
             elif p.p_type == "life":
                 self.lives += 1
                 self.score += 100
+            elif p.p_type == "double_shot":
+                self.ship.double_shot_time = C.DOUBLE_SHOT_DURATION
+            elif p.p_type == "laser":
+                self.ship.laser_charges += C.LASER_CHARGE_MAX
 
         hits = pg.sprite.groupcollide(
             self.asteroids,
@@ -188,6 +206,18 @@ class World:
         )
         for ast, _ in hits.items():
             self.split_asteroid(ast)
+
+        for laser in list(self.lasers):
+            for ast in list(self.asteroids):
+                if laser.hits(ast):
+                    self.split_asteroid(ast)
+
+        for laser in list(self.lasers):
+            for ufo in list(self.ufos):
+                if laser.hits(ufo):
+                    score = C.UFO_SMALL["score"] if ufo.small else C.UFO_BIG["score"]
+                    self.register_kill(score * C.LASER_SCORE_MULT)
+                    ufo.kill()
 
         ufo_hits = pg.sprite.groupcollide(
             self.asteroids,
@@ -270,10 +300,21 @@ class World:
             self.spawn_asteroid(pos, dirv * speed, s)
 
         if uniform(0, 1) < C.POWERUP_DROP_CHANCE:
-            ptype = "shield" if uniform(0, 1) < 0.7 else "life"
+            ptype = self._roll_powerup_type()
             p = PowerUp(pos, ptype)
             self.powerups.add(p)
             self.all_sprites.add(p)
+
+    @staticmethod
+    def _roll_powerup_type() -> str:
+        """Sorteia um tipo de power-up baseado nos pesos de POWERUP_WEIGHTS."""
+        roll = uniform(0, 1)
+        cumulative = 0.0
+        for ptype, weight in C.POWERUP_WEIGHTS.items():
+            cumulative += weight
+            if roll < cumulative:
+                return ptype
+        return list(C.POWERUP_WEIGHTS.keys())[-1]
 
     def take_damage(self):
         if self.ship.shield_time > 0:
@@ -292,11 +333,15 @@ class World:
         self.ship.vel.xy = (0, 0)
         self.ship.angle = -90
         self.ship.invuln = C.SAFE_SPAWN_TIME
+        self.ship.double_shot_time = 0.0  # Perde tiro duplo ao morrer
+        self.ship.laser_charges = 0       # Perde cargas de laser ao morrer
         self.safe = C.SAFE_SPAWN_TIME
 
     def draw(self, surf: pg.Surface, font: pg.font.Font):
         for spr in self.all_sprites:
             spr.draw(surf)
+
+        pg.draw.line(surf, (60, 60, 60), (0, 50), (C.WIDTH, 50), width=1)
 
         txt = f"SCORE {self.score:06d}   LIVES {self.lives}   WAVE {self.wave}"
         label = font.render(txt, True, C.WHITE)
@@ -305,8 +350,6 @@ class World:
         combo_txt = f"COMBO x{self.combo_mult}"
         combo_label = font.render(combo_txt, True, C.WHITE)
         surf.blit(combo_label, (10, 35))
-
-        pg.draw.line(surf, (60, 60, 60), (0, 65), (C.WIDTH, 65), width=1)
 
         if self.boss and self.boss.alive():
             phase = self.boss.get_phase()
@@ -323,4 +366,21 @@ class World:
 
             fill_w = int((self.boss.hp / self.boss.max_hp) * (bar_w - 4))
             pg.draw.rect(surf, C.WHITE, (x + 2, y + 2, fill_w, bar_h - 4))
-            
+
+        hud_x = C.WIDTH - 10
+        hud_y = 10
+
+        if self.ship.double_shot_time > 0:
+            ds_label = font.render(
+                f"2x {self.ship.double_shot_time:.1f}s", True, (255, 220, 80)
+            )
+            hud_x -= ds_label.get_width()
+            surf.blit(ds_label, (hud_x, hud_y))
+            hud_x -= 14
+
+        if self.ship.laser_charges > 0:
+            laser_label = font.render(
+                f"LASER x{self.ship.laser_charges}", True, C.LASER_COLOR
+            )
+            hud_x -= laser_label.get_width()
+            surf.blit(laser_label, (hud_x, hud_y))

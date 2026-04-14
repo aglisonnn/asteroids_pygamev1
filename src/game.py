@@ -53,6 +53,8 @@ class Game:
                     elif self.scene.name == "play":
                         if e.key == pg.K_SPACE:
                             self.world.try_fire()
+                        if e.key == pg.K_z:
+                            self.world.try_fire_laser()
                         if e.key == pg.K_LSHIFT:
                             self.world.hyperspace()
                     elif self.scene.name == "menu":
@@ -111,7 +113,10 @@ class Game:
         text(self.screen, self.big, "ASTEROIDS",
              C.WIDTH // 2 - 150, 180)
         text(self.screen, self.font,
-             "Setas: virar/acelerar  Espaço: tiro  Shift: hiper",
-             160, 300)
+             "Setas: virar/acelerar  Espaco: tiro  Shift: hiper",
+             160, 290)
         text(self.screen, self.font,
-             "Pressione qualquer tecla...", 260, 360)
+             "Z: laser  (power-ups: escudo / vida / tiro duplo / laser)",
+             130, 325)
+        text(self.screen, self.font,
+             "Pressione qualquer tecla...", 260, 375)

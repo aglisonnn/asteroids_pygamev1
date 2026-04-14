@@ -61,6 +61,67 @@ class PowerUp(pg.sprite.Sprite):
             p_right = self.pos + Vec(self.r - 2, 0)
             pg.draw.line(surf, C.WHITE, p_top, p_bot, width=2)
             pg.draw.line(surf, C.WHITE, p_left, p_right, width=2)
+        elif self.p_type == "double_shot":
+            # Desenha dois círculos pequenos lado a lado (tiro duplo)
+            offset = Vec(self.r * 0.45, 0)
+            draw_circle(surf, self.pos - offset, self.r * 0.55)
+            draw_circle(surf, self.pos + offset, self.r * 0.55)
+        elif self.p_type == "laser":
+            # Desenha um triângulo estreito com linha de brilho (laser)
+            tip = self.pos + Vec(0, -self.r)
+            bl = self.pos + Vec(-self.r * 0.4, self.r * 0.8)
+            br = self.pos + Vec(self.r * 0.4, self.r * 0.8)
+            pg.draw.polygon(surf, C.LASER_COLOR, [tip, bl, br], width=1)
+            pg.draw.line(surf, C.LASER_COLOR, self.pos, tip, 2)
+
+
+class Laser(pg.sprite.Sprite):
+    """Raio laser disparado pela nave — atravessa o ecrã em linha reta."""
+
+    def __init__(self, pos: Vec, angle: float):
+        super().__init__()
+        self.pos = Vec(pos)
+        self.angle = angle
+        self.ttl = C.LASER_TTL
+        self.r = 1  # Raio mínimo para colisões pontuais ao longo do raio
+        self.rect = pg.Rect(0, 0, 4, 4)
+        # Pré-calcula o vetor direcional e os pontos de fim do raio
+        self._dirv = angle_to_vec(angle)
+        self._end = Vec(
+            pos.x + self._dirv.x * C.WIDTH * 2,
+            pos.y + self._dirv.y * C.HEIGHT * 2,
+        )
+
+    def update(self, dt: float):
+        self.ttl -= dt
+        if self.ttl <= 0:
+            self.kill()
+        self.rect.center = self.pos
+
+    def draw(self, surf: pg.Surface):
+        # Desenha o feixe com duas linhas sobrepostas para efeito de brilho.
+        pg.draw.line(surf, C.LASER_COLOR, self.pos, self._end,
+                     C.LASER_WIDTH + 2)
+        pg.draw.line(surf, (200, 240, 255), self.pos, self._end,
+                     max(1, C.LASER_WIDTH - 1))
+
+    def hits(self, sprite) -> bool:
+        """Verifica se o sprite está sobre o raio usando distância ponto-linha."""
+        ax, ay = self.pos.x, self.pos.y
+        bx, by = self._end.x, self._end.y
+        cx, cy = sprite.pos.x, sprite.pos.y
+        # Distância do ponto C à reta AB
+        length_sq = (bx - ax) ** 2 + (by - ay) ** 2
+        if length_sq == 0:
+            return False
+        t = max(0.0, min(1.0,
+                         ((cx - ax) * (bx - ax) + (cy - ay) * (by - ay))
+                         / length_sq))
+        closest_x = ax + t * (bx - ax)
+        closest_y = ay + t * (by - ay)
+        dist = math.hypot(cx - closest_x, cy - closest_y)
+        return dist < sprite.r + C.LASER_WIDTH
+
 
 
 class UfoBullet(pg.sprite.Sprite):
@@ -139,13 +200,15 @@ class Asteroid(pg.sprite.Sprite):
 class Ship(pg.sprite.Sprite):
     def __init__(self, pos: Vec):
         super().__init__()
-        self.shield_time = 0.0
-        self.alive = True
         self.pos = Vec(pos)
         self.vel = Vec(0, 0)
         self.angle = -90.0
         self.cool = 0.0
         self.invuln = 0.0
+        self.alive = True
+        self.shield_time = 0.0       # Tempo restante do escudo
+        self.double_shot_time = 0.0  # Tempo restante do tiro duplo
+        self.laser_charges = 0       # Cargas de laser disponíveis
         self.r = C.SHIP_RADIUS
         self.rect = pg.Rect(0, 0, self.r * 2, self.r * 2)
 
@@ -158,14 +221,43 @@ class Ship(pg.sprite.Sprite):
             self.vel += angle_to_vec(self.angle) * C.SHIP_THRUST * dt
         self.vel *= C.SHIP_FRICTION
 
-    def fire(self) -> Bullet | None:
+    def fire(self) -> "list[Bullet]":
+        """Dispara um ou dois tiros dependendo do power-up ativo.
+
+        Returns:
+            Lista com zero, um ou dois Bullet recém criados.
+        """
         if self.cool > 0:
-            return None
-        dirv = angle_to_vec(self.angle)
+            return []
+        self.cool = C.SHIP_FIRE_RATE
+
+        if self.double_shot_time > 0:
+            return self._spawn_double_bullets()
+        return [self._spawn_bullet(self.angle)]
+
+    def _spawn_bullet(self, angle: float) -> "Bullet":
+        """Cria um único projétil na direção indicada."""
+        dirv = angle_to_vec(angle)
         pos = self.pos + dirv * (self.r + 6)
         vel = self.vel + dirv * C.SHIP_BULLET_SPEED
-        self.cool = C.SHIP_FIRE_RATE
         return Bullet(pos, vel)
+
+    def _spawn_double_bullets(self) -> "list[Bullet]":
+        """Cria dois projéteis divergentes (tiro duplo)."""
+        spread = C.DOUBLE_SHOT_SPREAD / 2.0
+        return [
+            self._spawn_bullet(self.angle - spread),
+            self._spawn_bullet(self.angle + spread),
+        ]
+
+    def fire_laser(self) -> "Laser | None":
+        """Dispara um raio laser se houver cargas disponíveis."""
+        if self.laser_charges <= 0:
+            return None
+        self.laser_charges -= 1
+        dirv = angle_to_vec(self.angle)
+        pos = self.pos + dirv * (self.r + 6)
+        return Laser(pos, self.angle)
 
     def hyperspace(self):
         self.pos = Vec(uniform(0, C.WIDTH), uniform(0, C.HEIGHT))
@@ -179,6 +271,8 @@ class Ship(pg.sprite.Sprite):
             self.invuln -= dt
         if self.shield_time > 0:
             self.shield_time -= dt
+        if self.double_shot_time > 0:
+            self.double_shot_time -= dt
         self.pos += self.vel * dt
         self.pos = wrap_pos(self.pos)
         self.rect.center = self.pos
