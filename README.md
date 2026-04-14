@@ -141,6 +141,11 @@ Para congelar novas dependencias:
 pip freeze > requirements.txt
 ```
 
+## C4
+
+<img width="8192" height="5911" alt="Asteroids Game Loop-2026-04-14-215400" src="https://github.com/user-attachments/assets/761ca709-9860-4e4b-a6d2-ef6045b4d4ce" />
+
+
 ## Licenca
 
 Este projeto utiliza a licenca MIT. Consulte o arquivo LICENSE para detalhes.
